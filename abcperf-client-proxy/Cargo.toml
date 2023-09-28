@@ -1,0 +1,21 @@
+[package]
+name = "abcperf-client-proxy"
+version = "0.10.0"
+edition = "2021"
+license = "MIT"
+description = "Client Request Proxy for ABCperf"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+shared-ids = { path = "../../shared-ids", version = "0.10.0" }
+abcperf = { path = "../abcperf", version = "0.10.0" }
+async-trait = "0.1.52"
+tokio = { version = "1.15" }
+serde = "1.0"
+tracing = "0.1.10"
+ed25519-dalek = { version = "2.0", features = ["serde", "rand_core", "digest"] }
+blake2 = "0.10.6"
+derivative = "2.2"
+rand = "0.8"
+anyhow = "1"

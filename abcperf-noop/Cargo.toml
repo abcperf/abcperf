@@ -1,0 +1,26 @@
+[package]
+name = "abcperf-noop"
+version = "0.10.0"
+edition = "2021"
+license = "MIT"
+description = "A No-Op Application for ABCperf"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+shared-ids = { path = "../../shared-ids", version = "0.10.0" }
+abcperf = { path = "../../abcperf/abcperf", version = "0.10.0" }
+abcperf-client-proxy = { path = "../../abcperf/abcperf-client-proxy", version = "0.10.0" }
+abcperf-generic-client = { path = "../../abcperf/abcperf-generic-client", version = "0.10.0" }
+minbft = { path = "../../minbft", version = "0.10.0" }
+futures = "0.3.19"
+tokio = { version = "1.15.0", features = ["full"] }
+anyhow = "1.0"
+serde = { version = "1.0", features = ["rc"] }
+serde_bytes = "0.11.5"
+async-trait = "0.1.52"
+reqwest = { version = "0.11.8", default-features = false, features = [
+    "stream",
+    "rustls-tls",
+] }
+tracing = "0.1.10"
