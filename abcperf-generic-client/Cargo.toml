@@ -4,6 +4,7 @@ version = "0.10.0"
 edition = "2021"
 license = "MIT"
 description = "Generic Cient Building Blocks for ABCperf"
+repository = "https://github.com/abcperf/abcperf"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

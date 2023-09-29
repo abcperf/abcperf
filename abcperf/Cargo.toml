@@ -4,6 +4,7 @@ version = "0.10.0"
 edition = "2021"
 license = "MIT"
 description = "ABCperf: A Performance Measurement Framework for Atomic Broadcast Algorithms"
+repository = "https://github.com/abcperf/abcperf"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
