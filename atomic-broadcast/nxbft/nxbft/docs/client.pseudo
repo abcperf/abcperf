@@ -1,0 +1,36 @@
+id: int
+sq: int
+n: int
+open_request: Option
+
+procedure init(n) {
+    // Register with the replicated state machine and retreive a unique client id
+    sq = 0
+    self.n = n
+}
+
+procedure user_input(t) {
+    if self.open_request.is_some() {
+        return
+    }
+
+    p_j = uniform(0, self.n)
+    unicast(CLIENT_REQUEST, sq, t)
+    self.schedule_request_timeout(sq)
+    self.open_request = t
+}
+
+procedure process_response(sq, response) {
+    if self.open_request == None or self.sq != sq {
+        return
+    }
+    self.open_request = None
+    deliver(response)
+}
+
+procedure process_request_timeout(sq) {
+    if self.open_request == None or self.sq != sq {
+        return
+    }
+    broadcast(CLIENT_REQUEST, sq, self.open_request)
+}

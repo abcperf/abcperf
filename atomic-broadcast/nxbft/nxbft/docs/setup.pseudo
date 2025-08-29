@@ -1,0 +1,3 @@
+procedure round(w, r) {
+    return 4 * (w - 1) + r
+}

@@ -1,0 +1,143 @@
+[workspace]
+resolver = "2"
+members = [
+    "abcperf/abcperf",
+    "abcperf/abcperf-bin",
+
+    "application/abcperf-noop",
+    "application/maas/abcperf-maas",
+    "application/maas/maas-tee",
+    "application/maas/maas-types",
+
+    "atomic-broadcast/abcperf-abcwrapper",
+    "atomic-broadcast/abcperf-debug",
+    "atomic-broadcast/damysus/abcperf-damysus",
+    "atomic-broadcast/damysus/damysus",
+    "atomic-broadcast/damysus/damysus-base",
+    "atomic-broadcast/damysus/damysus-tee",
+    "atomic-broadcast/damysus/damysus-tee-shared",
+    "atomic-broadcast/minbft/abcperf-minbft",
+    "atomic-broadcast/minbft/minbft",
+    "atomic-broadcast/minbft/usig",
+    "atomic-broadcast/minbft/usig-tee",
+    "atomic-broadcast/nxbft/abcperf-nxbft",
+    "atomic-broadcast/nxbft/nxbft",
+    "atomic-broadcast/nxbft/nxbft-base",
+    "atomic-broadcast/nxbft/nxbft-tee",
+    "atomic-broadcast/nxbft/nxbft-tee-shared",
+
+    "other/enclave-result",
+    "other/heaps",
+    "other/id-set",
+    "other/netem",
+    "other/remote-attestation",
+    "other/remote-attestation-shared",
+    "other/rust-sgx-sdk-build-helper",
+    "other/sgx-utils",
+    "other/shared-ids",
+    "other/trait-alias-macro",
+    "other/transaction-trait",
+    "splitee/splitee",
+    "splitee/splitee-crypto",
+    "splitee/splitee-primitives-trusted",
+    "splitee/splitee-primitives-untrusted",
+    "splitee/splitee-sgx/splitee-sgx-lib",
+    "splitee/splitee-sgx/splitee-sgx-trusted",
+    "splitee/splitee-sgx/splitee-sgx-untrusted",
+]
+exclude = [
+    "usig-tee-enclave",
+    "maas-tee-enclave",
+    "nxbft-tee-enclave",
+    "damysus-tee-enclave",
+    "rust-sgx-sdk/rustlib",
+    "rust-sgx-sdk/samplecode",
+]
+default-members = ["abcperf/abcperf-bin"]
+
+[workspace.dependencies]
+abcperf = { path = "abcperf/abcperf" }
+abcperf-bin = { path = "abcperf/abcperf-bin" }
+
+abcperf-noop = { path = "application/abcperf-noop" }
+abcperf-maas = { path = "application/maas/abcperf-maas" }
+maas-tee = { path = "application/maas/maas-tee" }
+maas-types = { path = "application/maas/maas-types" }
+
+abcperf-abcwrapper = { path = "atomic-broadcast/abcperf-abcwrapper" }
+abcperf-debug = { path = "atomic-broadcast/abcperf-debug" }
+abcperf-damysus = { path = "atomic-broadcast/damysus/abcperf-damysus" }
+damysus = { path = "atomic-broadcast/damysus/damysus" }
+damysus-base = { path = "atomic-broadcast/damysus/damysus-base" }
+damysus-tee = { path = "atomic-broadcast/damysus/damysus-tee" }
+damysus-tee-shared = { path = "atomic-broadcast/damysus/damysus-tee-shared" }
+abcperf-minbft = { path = "atomic-broadcast/minbft/abcperf-minbft" }
+minbft = { path = "atomic-broadcast/minbft/minbft" }
+usig = { path = "atomic-broadcast/minbft/usig" }
+usig-tee = { path = "atomic-broadcast/minbft/usig-tee" }
+abcperf-nxbft = { path = "atomic-broadcast/nxbft/abcperf-nxbft" }
+nxbft = { path = "atomic-broadcast/nxbft/nxbft" }
+nxbft-base = { path = "atomic-broadcast/nxbft/nxbft-base" }
+nxbft-tee = { path = "atomic-broadcast/nxbft/nxbft-tee" }
+nxbft-tee-shared = { path = "atomic-broadcast/nxbft/nxbft-tee-shared" }
+
+enclave-result = { path = "other/enclave-result" }
+heaps = { path = "other/heaps" }
+id-set = { path = "other/id-set" }
+netem = { path = "other/netem" }
+remote-attestation = { path = "other/remote-attestation" }
+remote-attestation-shared = { path = "other/remote-attestation-shared" }
+rust-sgx-sdk-build-helper = { path = "other/rust-sgx-sdk-build-helper" }
+sgx-utils = { path = "other/sgx-utils" }
+shared-ids = { path = "other/shared-ids" }
+trait-alias-macro = { path = "other/trait-alias-macro" }
+transaction-trait = { path = "other/transaction-trait" }
+
+tokio = { version = "1.15", features = ["full"] }
+tracing = "0.1.10"
+
+[profile.release]
+lto = true
+strip = true
+debug-assertions = false
+overflow-checks = false
+
+[profile.flamegraph]
+inherits = "dev"
+opt-level = 3
+
+[profile.prerelease]
+inherits = "dev"
+opt-level = 3
+strip = true
+debug-assertions = true
+overflow-checks = true
+
+[profile.test]
+opt-level = 3
+
+[patch.'https://github.com/apache/teaclave-sgx-sdk.git']
+#sgx_alloc = { path = "rust-sgx-sdk/sgx_alloc" }
+sgx_build_helper = { path = "rust-sgx-sdk/sgx_build_helper/build_helper" }
+#sgx_cov = { path = "rust-sgx-sdk/sgx_cov" }
+#sgx_crypto_helper = { path = "rust-sgx-sdk/sgx_crypto_helper" }
+#sgx_libc = { path = "rust-sgx-sdk/sgx_libc" }
+#sgx_rand = { path = "rust-sgx-sdk/sgx_rand" }
+#sgx_rand_derive = { path = "rust-sgx-sdk/sgx_rand_derive" }
+#sgx_serialize = { path = "rust-sgx-sdk/sgx_serialize" }
+#sgx_serialize_derive = { path = "rust-sgx-sdk/sgx_serialize_derive" }
+#sgx_serialize_derive_internals = { path = "rust-sgx-sdk/sgx_serialize_derive_internals" }
+#sgx_tcrypto = { path = "rust-sgx-sdk/sgx_tcrypto" }
+#sgx_tcrypto_helper = { path = "rust-sgx-sdk/sgx_tcrypto_helper" }
+#sgx_tdh = { path = "rust-sgx-sdk/sgx_tdh" }
+#sgx_tkey_exchange = { path = "rust-sgx-sdk/sgx_tkey_exchange" }
+#sgx_tprotected_fs = { path = "rust-sgx-sdk/sgx_tprotected_fs" }
+#sgx_trts = { path = "rust-sgx-sdk/sgx_trts" }
+#sgx_tse = { path = "rust-sgx-sdk/sgx_tse" }
+#sgx_tseal = { path = "rust-sgx-sdk/sgx_tseal" }
+#sgx_tstd = { path = "rust-sgx-sdk/sgx_tstd" }
+#sgx_tunittest = { path = "rust-sgx-sdk/sgx_tunittest" }
+sgx_types = { path = "rust-sgx-sdk/sgx_types" }
+sgx_crypto = { path = "rust-sgx-sdk/sgx_crypto" }
+#sgx_unwind = { path = "rust-sgx-sdk/sgx_unwind" }
+sgx_urts = { path = "rust-sgx-sdk/sgx_urts" }

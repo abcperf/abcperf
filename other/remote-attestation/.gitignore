@@ -1,0 +1,6 @@
+/target
+*.pem
+!AttestationReportSigningCACert.pem
+*.der
+*.csr
+*.srl

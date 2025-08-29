@@ -1,0 +1,33 @@
+[package]
+name = "usig-tee"
+version = "1.0.0"
+edition = "2021"
+build = "build.rs"
+links = "usig_tee_u"
+
+[dependencies]
+shared-ids = { workspace = true }
+sgx_types = { git = "https://github.com/apache/teaclave-sgx-sdk.git" }
+sgx_urts = { git = "https://github.com/apache/teaclave-sgx-sdk.git" }
+sgx_crypto = { git = "https://github.com/apache/teaclave-sgx-sdk.git", default-features = false, features = [
+    "ucrypto",
+] }
+usig = { workspace = true }
+serde = { version = "1.0", features = ["derive"] }
+serde_bytes = "0.11.5"
+remote-attestation = { workspace = true }
+remote-attestation-shared = { workspace = true }
+sgx-utils = { workspace = true }
+tracing = "0.1.10"
+hashbar = "1.0.2"
+
+[build-dependencies]
+rust-sgx-sdk-build-helper = { workspace = true }
+getrandom = "0.3"
+
+[dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
+
+[[bench]]
+name = "usig_sign"
+harness = false

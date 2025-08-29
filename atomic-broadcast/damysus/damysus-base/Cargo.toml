@@ -1,0 +1,15 @@
+[package]
+name = "damysus-base"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+serde = "1"
+hashbar = "1.0.2"
+serde_bytes = "0.11.5"
+shared-ids = { workspace = true }
+blake2 = "0.10"
+once_cell = "1"
+heaps = { workspace = true }
+id-set = { workspace = true }
+tracing = "0.1"

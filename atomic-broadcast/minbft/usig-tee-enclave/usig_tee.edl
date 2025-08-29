@@ -1,0 +1,14 @@
+enclave {
+    from "sgx_net.edl" import *;
+    from "sgx_fs.edl" import *;
+    from "sgx_thread.edl" import *;
+    from "sgx_tstd.edl" import *;
+    from "sgx_cpuid.edl" import *;
+
+    include "sgx_tcrypto.h"
+
+    trusted {
+        public sgx_status_t attest([out] sgx_ec256_public_t* pubkey, [out] uint64_t* counter, [out, size = cert_der_max_len] uint8_t* cert_der, size_t cert_der_max_len, [out] size_t* cert_der_len);
+        public sgx_status_t sign([in, size=len] const uint8_t* message, size_t len, [out] sgx_ec256_signature_t* signature, [out] uint64_t* counter);
+    };
+};

@@ -1,0 +1,15 @@
+[package]
+name = "netem"
+version = "0.10.0"
+edition = "2021"
+license = "MIT"
+description = "A library with which NetEm can be configured depending on the destination address"
+repository = "https://github.com/abcperf/netem"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+anyhow = "1.0.71"
+thiserror = "1.0.40"
+serde = { version = "1.0.193", features = ["derive"] }
+tracing = "0.1.40"

@@ -1,0 +1,7 @@
+/target
+*.pem
+*.der
+*.csr
+*.srl
+*.profraw
+.VSCodeCounter

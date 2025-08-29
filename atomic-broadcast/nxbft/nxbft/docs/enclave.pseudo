@@ -1,0 +1,140 @@
+(sk, pk): asymmetric key pair
+n: int
+c: int
+r_toss: int
+peers: [Pubkey]
+enclave_keys: [Pubkey]
+peersAdded: int
+setup_complete: [bool]
+seed: u256
+seed_share: u256 
+rng: CPRNG  // Cryptographically secure pseudo-random number generator
+ready: bool
+old_key_bound: [int]
+old_keys: [BTreeMap<RangeInclusive, Pubkey>]
+
+procedure init(peers) {
+    if self.ready {
+        return
+    }
+
+    self.peers = peers
+    self.enclave_keys = []
+    self.n = self.peers.len()
+    self.peersAdded = 0
+    self.c = 0
+    self.r_toss = 4
+    self.ready = false
+    self.setup_complete = []
+    self.seed = 0
+    (self.sk, self.pk) = generate_key_pair()
+    self.seed_share = rand()
+    self.old_key_bound = [0, ..., 0]
+}
+
+procedure get_attestation_certificate() {
+    return create_attestation(self.pk)
+}
+
+procedure attest_peer(p_k, attestation, signature) {
+    if not ready or not verify_attestation(attestation) {
+        return None
+    }
+    self.enclave_keys[p_k] = attestation.public_key
+    return encrypt(self.enclave_keys[p_k], self.seed_share)
+}
+
+procedure add_peer(p_k, ciphertext) {
+    if self.enclave_keys[p_k] == None or self.setup_complete[p_k] {
+        return false
+    }
+    share = decrypt(self.sk, ciphertext)
+    if is_error(share) {
+        return false
+    }
+    self.seed = xor(self.seed, share)
+    self.peers_added += 1
+    self.setup_complete[p_k] = true
+    if self.peers_added == self.n {
+        self.rng = CPRNG(self.seed)
+        self.ready = true
+    }
+    return true
+}
+
+procedure sign(v) {
+    signature = sgn(self.sk, (c,v))
+    c += 1
+    return (c - 1, signature)
+}
+
+procedure verify(p_k, v, c, signature) {
+    if v.round < self.old_key_bound[p_k] {
+        return vfy(signature, self.old_keys[p_k].get(v.round..=v.round), (c, v))
+    }
+    return vfy(signature, self.enclave_keys[p_k], (c, v))
+}
+
+procedure toss(vs) {
+    if not self.ready {
+        return None
+    }
+    
+    valid = 0
+    seen = []
+
+    foreach v in vs {
+        if not seen.contains(v.creator) and v.r = self.r_toss and self.verify(v.creator, v, v.c, v.signature) {
+            valid += 1
+            seen.insert(v.creator)
+        }
+        if valid < (self.n / 2) + 1 {
+            return None
+        }
+        self.r_toss += 4
+        return self.prng.uniform(0, self.n)
+    }
+}
+
+procedure export() {
+    if not self.ready {
+        return None
+    }
+    return seal({self.seed, self.peers, self.enclave_keys, self.r_toss, self.old_key_bound, self.old_keys})
+}
+
+procedure recover(state) {
+    if self.ready {
+        return false
+    }
+    {self.seed, self.peers, self.enclave_keys, self.r_toss, self.old_key_bound, self.old_keys} = unseal(state)
+    self.n = self.peers.len()
+    self.rng = CPRNG(self.seed)
+    self.ready = true
+    self.c = 0
+    (self.sk, self.pk) = generate_key_pair()
+    foreach i in [0, (self.r_toss - 4) / 4] {
+        self.rng.uniform(0, self.n)
+    }
+    return true
+}
+
+procedure replace_peer(p_k, attestation, signatures, max_round) {
+    if not self.ready or not verify_attestation(attestation) {
+        return false
+    }
+    valid = 0
+    foreach (p_j, signature) in signatures {
+        if vfy(signature, self.peers[p_j], attestation) {
+            valid += 1
+        }
+    }
+    if valid < (self.n / 2) + 1 {
+        return false
+    }
+    
+    self.old_keys[p_k].insert(self.old_key_bound[p_k]..=max_round, self.enclave_keys[p_k])
+    self.old_key_bound[p_k] = max_round
+    self.enclave_keys[p_k] = attestation.public_key
+    return true
+}

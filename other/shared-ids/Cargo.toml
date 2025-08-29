@@ -1,0 +1,13 @@
+[package]
+name = "shared-ids"
+version = "0.11.0"
+edition = "2021"
+license = "MIT"
+description = "New types for different IDs"
+repository = "https://github.com/abcperf/shared-ids"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+hashbar = "1.0.2"

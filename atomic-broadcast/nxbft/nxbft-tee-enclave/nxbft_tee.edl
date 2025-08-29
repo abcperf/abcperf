@@ -1,0 +1,44 @@
+enclave {
+    from "sgx_net.edl" import *;
+    from "sgx_fs.edl" import *;
+    from "sgx_thread.edl" import *;
+    from "sgx_tstd.edl" import *;
+    from "sgx_cpuid.edl" import *;
+
+    include "sgx_tcrypto.h"
+
+    trusted {
+        public uint8_t init(uint64_t n);
+        public uint8_t attest(
+            [out] sgx_ec256_public_t* local_pub_key, 
+            [out, size = local_ra_max_len] uint8_t* local_ra, size_t local_ra_max_len, [out] size_t* local_ra_len
+            );
+        public uint8_t init_peer_handshake(
+            uint64_t peer_id,
+            [in] sgx_ec256_public_t* remote_pub_key,
+            [in, size = remote_ra_len] uint8_t* remote_ra, size_t remote_ra_len,
+            [out, size = local_proposed_secret_max_len] uint8_t* local_proposed_secret, size_t local_proposed_secret_max_len, [out] size_t* local_proposed_secret_len,
+            [out] sgx_aes_gcm_128bit_tag_t* local_proposed_secret_mac
+        );
+        public uint8_t complete_peer_handshake(
+            uint64_t peer_id,
+            [in, size = remote_proposed_secret_len] uint8_t* remote_proposed_secret, size_t remote_proposed_secret_len,
+            [in] sgx_aes_gcm_128bit_tag_t* remote_proposed_secret_mac
+        );
+        public uint8_t is_ready();
+        public uint8_t sign([in, size=payload_len] const uint8_t* payload, size_t payload_len, [out] sgx_ec256_signature_t* signature, [out] uint64_t* counter);
+        public uint8_t toss([in, size=proof_len] const uint8_t* proof, size_t proof_len, [out] uint64_t* peer_id);
+        public uint8_t export(
+            [out, size = export_max_len] uint8_t* export, size_t export_max_len, [out] size_t* export_len
+        );
+        public uint8_t recover(
+            [in, size = export_len] uint8_t* export, size_t export_len
+        );
+        public uint8_t replace_peer(
+            uint64_t peer_id,
+            [in] sgx_ec256_public_t* remote_pub_key,
+            [in, size = remote_ra_len] uint8_t* remote_ra, size_t remote_ra_len,
+            uint64_t max_round
+        );
+    };
+};

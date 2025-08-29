@@ -1,0 +1,182 @@
+procedure recovery_by_admin(state_export, enclave_export) {
+    if not self.enclave.recover(enclave_export) { 
+        return
+    }
+    self.in_recovery = true
+    set algorithm state to state_export
+    attestation = enclave.getAttestationCertificate()
+    signature = sgn(sk, attestation)
+    broadcast(RECOVERY_REQUEST, attestation, signature)
+}
+
+procedure process_recovery_request(p_r, attestation, signature) {
+    if  self.seen_recovery_requests.contains(attestation) {
+        or not self.enclave.verifyAttestation(attestation) 
+        or not vfy(signature, self.peers[p_r], attestation) 
+        return
+    }
+
+    if self.in_recovery {
+        // Resend my own recovery request as other peer may not have received it
+        my_attestation = self.enclave.getAttestationCertificate()
+        my_signature = sgn(sk, my_attestation)
+        unicast(p_r, RECOVERY_REQUEST, my_attestation, my_signature)
+    }
+
+    self.recovery_commits[attestation] = {}
+    self.longest_recovery_proposal[attestation] = []
+    self.currently_recovering.insert(p_r)
+
+    // Clear buffers for recovering peer; only DAG messages are kept and considered
+    foreach v in self.buffer {
+        if c.creator == p_r {
+            self.buffer.remove(v)
+        }
+    }
+    self.ne_message_buffers[p_r].clear()
+
+    // Identify chain of vertices by p_r added to DAG since p_r's last recovery
+    top = 0
+    bot = 0
+    foreach r_prime in 1..=self.r.iter().reverse() {
+        v = self.dag[r_prime][p_r]
+        if t == 0 and v not None {
+            if not self.enclave.verify(v.creator, v, v.c, v.signature) {
+                break
+            }
+            top = r_prime
+            if top not 0 {
+                bot = r_prime
+                if v.c == 0 or (r_prime < top and v.c > self.dag[r_prime + 1][p_r].c) {
+                    break
+                }
+            }
+        }
+    }
+    proposal = if t not 0 {
+        [self.dag[p_r][bot], ..., self.dag[p_r][top]]
+    } else {
+        // We did not add any vertex of p_r to our DAG since p_r's last recovery
+        []
+    }
+
+    // We propose the chain of vertices by p_r added to DAG since p_r's last recovery
+    broadcast(RECOVERY_PROPOSAL, p_r, attestation, signature, proposal)
+}
+
+procedure process_recovery_proposal(p_k, p_r, attestation, signature, proposal) {
+    if  self.recovery_proposal_senders.getOrDefault(attestation).contains(p_k) 
+        or self.successful_recoveries.contains(attestation) {
+        or not self.enclave.verifyAttestation(attestation) 
+        or not vfy(signature, self.peers[p_r], attestation) 
+        return
+    }
+    
+    // Process the recovery request of p_r if not done yet
+    self.process_recovery_request(p_r, attestation, signature)
+
+    self.recovery_proposal_senders[attestation].insert(p_k)
+    
+    // Verify the proposal to only contain validly signed vertices with a valid edge count that are strictly increasing in round
+    valid = true
+    foreach k in 0..proposal.len() {
+        if  (k > 0 and proposal[k].round <= proposal[k - 1].round) 
+            or (proposal[k].round = 1 and proposal[k].edges.len() > 0)
+            or (proposal[k].round > 1 and proposal[k].edges.len() < self.quorum) {
+            or not self.enclave.verify(proposal[k].creator, proposal[k], proposal[k].c, proposal[k].signature)
+            valid = false
+            break
+        }
+    }
+    
+    // Keep track of longest valid proposal for each attestation (i.e., each p_r but maybe with multiple recoveries)
+    if valid and proposal.len() > self.longest_recovery_proposal[attestation].len() {
+        self.longest_recovery_proposal[attestation] = proposal
+    }
+
+    // We need to wait for all peers to send a proposal (validness however not required)
+    if self.recovery_proposal_senders[attestation].len() < n {
+        return
+    }
+
+    // We commit what we deem as the longest chain of vertices for the recovery of p_r with corresponding attestation
+    broadcast(RECOVERY_COMMIT, p_r, attestation, signature, longest_recovery_proposal[attestation], sgn(sk, attestation))
+}
+
+procedure process_recovery_commit(p_k, p_r, attestation, attestation_signature, commited_proposal, commit_signature) {
+    if  self.recovery_commits.getOrDefault(attestation).contains_key(p_k)
+        or self.successful_recoveries.contains(attestation) {
+        or not self.enclave.verifyAttestation(attestation) 
+        or not vfy(attestation_signature, self.peers[p_r], attestation) 
+        or not vfy(commit_signature, self.peers[p_k], attestation)
+        return
+    }
+
+    // Process the recovery request of p_r if not done yet
+    self.process_recovery_request(p_r, attestation, signature)
+
+    self.recovery_commits[attestation][p_k] = (commited_proposal, commit_signature)
+
+    // There can only be a quorum for a proposal if we overall have at least quorum many commits for an attestation
+    if self.recovery_commits[attestation].len() < self.quorum {
+        return
+    }
+
+    // Identify if at least quorum many peers agree in the longest chain for the recovery of p_r with corresponding attestation
+    proposal_count = {}
+    signatures = {}
+    foreach (p_j, (p_proposal, p_signature)) in self.recovery_commits[attestation].iter_some() {
+        proposal_count[p_proposal] = proposal_count.getOrDefault(p_proposal) + 1
+        signatures[p_proposal].insert((p_j, p_signature))
+    }
+
+    confirmed = None
+    confirmed_signatures = None
+    foreach (proposal, count) in proposal_count {
+        if count < self.quorum {
+            continue
+        }
+        confirmed = proposal
+        confirmed_signatures = signatures[proposal]
+    }
+    if confirmed is None {
+        // Not enough agreement on the longest chain for the recovery of p_r with corresponding attestation
+        return
+    }
+
+    // Clear buffers for recovering peer
+    self.ne_message_buffers[p_r].clear()
+    foreach v in self.buffer {
+        if c.creator == p_r {
+            self.buffer.remove(v)
+        }
+    }
+
+    // Apply the confirmed chain of vertices to the buffer
+    foreach v in confirmed {
+        if self.dag[v.round][p_r] is None {
+            self.buffer.insert(v)
+        }
+        if self.max_rounds[p_r] < v.round {
+            self.max_rounds[p_r] = v.round
+        }
+    }
+
+    // Replace p_r's attestation with the confirmed one
+    self.enclave.replace_peer(p_r, attestation, confirmed_signatures, max_rounds[p_r])
+    self.expected_counters[p_r] = 0
+    if p_r == self.id {
+        // We recovered ourselves successfully
+        self.in_recovery = false
+        self.restart_round = confirmed.last().round + 1
+    }
+    self.successful_recoveries.insert(attestation)
+    self.currently_recovering.remove(p_r)
+
+    // Clear up state that can be safely removed (and is the biggest recovery-related state as well)
+    self.longest_recovery_proposal.remove(attestation)
+    self.recovery_commits.remove(attestation)
+
+    // Check vertex buffer for new vertices to that can be added to the DAG
+    self.buffer_walk()
+}

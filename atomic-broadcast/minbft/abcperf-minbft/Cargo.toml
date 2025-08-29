@@ -1,0 +1,21 @@
+[package]
+name = "abcperf-minbft"
+version = "0.11.0"
+edition = "2021"
+license = "MIT"
+description = "Integration of MinBFT into ABCperf"
+repository = "https://github.com/abcperf/demo"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+shared-ids = { workspace = true }
+abcperf = { workspace = true }
+minbft = { workspace = true }
+usig = { workspace = true }
+serde = { version = "1.0" }
+tokio = { version = "1.15.0", features = ["full"] }
+tracing = "0.1.10"
+anyhow = "1.0"
+futures = "0.3.19"
+abcperf-abcwrapper = { workspace = true }

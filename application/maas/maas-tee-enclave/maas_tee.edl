@@ -1,0 +1,54 @@
+enclave {
+    from "sgx_backtrace.edl" import *;
+    from "sgx_tstd.edl" import *;
+    from "sgx_net.edl" import *;
+    from "sgx_thread.edl" import *;
+    from "sgx_cpuid.edl" import *;
+
+    include "sgx_tcrypto.h"
+
+    trusted {
+        public sgx_status_t init(size_t id);
+        public sgx_status_t attest(
+            [out] sgx_ec256_public_t* local_pub_key,
+            [out, size = local_ra_max_len] uint8_t* local_ra, size_t local_ra_max_len, [out] size_t* local_ra_len
+        );
+        public sgx_status_t attest_shared_key(
+            [out] sgx_ec256_public_t* local_pub_key,
+            [out, size = local_ra_max_len] uint8_t* local_ra, size_t local_ra_max_len, [out] size_t* local_ra_len
+        );
+        public sgx_status_t ma_continue(
+            [in] sgx_ec256_public_t* remote_pub_key,
+            [in, size = remote_ra_len] uint8_t* remote_ra, size_t remote_ra_len,
+            [out, size = local_proposed_secret_max_len] uint8_t* local_proposed_secret, size_t local_proposed_secret_max_len, [out] size_t* local_proposed_secret_len,
+            [out] sgx_aes_gcm_128bit_tag_t* local_proposed_secret_mac
+        );
+        public sgx_status_t ma_finish(
+            [in] sgx_ec256_public_t* remote_pub_key,
+            [in, size = remote_ra_len] uint8_t* remote_ra, size_t remote_ra_len,
+            [in, size = remote_proposed_secret_len] uint8_t* remote_proposed_secret, size_t remote_proposed_secret_len,
+            [in] sgx_aes_gcm_128bit_tag_t* remote_proposed_secret_mac
+        );
+        public sgx_status_t from_bft(
+            uint64_t client_id,
+            uint64_t request_id,
+            [in, size=payload_len] const uint8_t* payload, size_t payload_len,
+            [in] sgx_aes_gcm_128bit_tag_t* mac
+        );
+        public sgx_status_t from_client(
+            uint64_t client_id,
+            uint64_t replica_id,
+            [in] sgx_ec256_public_t* client_pub_key,
+            [in, size=payload_len] const uint8_t* payload, size_t payload_len,
+            [in] sgx_aes_gcm_128bit_tag_t* mac
+        );
+        public sgx_status_t shared_secret_info(
+            [out] uint8_t* k_anonymity_hash
+        );
+    };
+
+    untrusted {
+        sgx_status_t maas_tee_to_bft(uint64_t client_id, uint64_t request_id, [in, size=payload_len] const uint8_t* payload, size_t payload_len, [in] sgx_aes_gcm_128bit_tag_t* mac);
+        sgx_status_t maas_tee_to_client(uint64_t client_id, uint64_t request_id, [in, size=payload_len] const uint8_t* payload, size_t payload_len, [in] sgx_aes_gcm_128bit_tag_t* mac);
+    };
+};

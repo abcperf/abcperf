@@ -1,0 +1,82 @@
+[package]
+name = "abcperf-bin"
+version = "0.1.0"
+edition = "2021"
+build = "build.rs"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+
+[features]
+default = [
+    "state-machine-noop",
+    "state-machine-maas",
+    "algorithm-minbft-tee",
+    "algorithm-minbft-noop",
+    "algorithm-nxbft-simple-enclave",
+    "algorithm-nxbft-tee",
+    "algorithm-debug-reply",
+    "algorithm-damysus",
+    "all",
+]
+
+
+all = ["state-machine-all", "algorithm-all"]
+
+
+state-machine-all = ["state-machine-noop", "state-machine-maas"]
+state-machine-noop = ["abcperf-noop"]
+state-machine-maas = ["abcperf-maas"]
+algorithm-all = [
+    "algorithm-minbft",
+    "algorithm-nxbft",
+    "algorithm-debug-reply",
+    "algorithm-damysus",
+]
+
+algorithm-minbft = [
+    "algorithm-minbft-ed25519",
+    "algorithm-minbft-noop",
+    "algorithm-minbft-tee",
+]
+algorithm-minbft-ed25519 = ["abcperf-minbft", "minbft", "usig"]
+algorithm-minbft-noop = ["abcperf-minbft", "minbft", "usig"]
+algorithm-minbft-tee = ["abcperf-minbft", "minbft", "usig-tee"]
+
+algorithm-nxbft = ["algorithm-nxbft-simple-enclave", "algorithm-nxbft-tee"]
+algorithm-nxbft-simple-enclave = ["abcperf-nxbft", "nxbft"]
+algorithm-nxbft-tee = ["abcperf-nxbft", "nxbft", "nxbft-tee"]
+
+algorithm-debug-reply = ["abcperf-debug"]
+
+algorithm-damysus = ["algorithm-damysus-noop", "algorithm-damysus-tee"]
+algorithm-damysus-noop = ["abcperf-damysus", "damysus"]
+algorithm-damysus-tee = ["abcperf-damysus", "damysus", "damysus-tee"]
+
+[dependencies]
+tikv-jemallocator = "0.6"
+abcperf = { workspace = true }
+abcperf-minbft = { workspace = true, optional = true }
+abcperf-noop = { workspace = true, optional = true }
+abcperf-nxbft = { workspace = true, optional = true }
+abcperf-damysus = { workspace = true, optional = true }
+abcperf-maas = { workspace = true, optional = true }
+usig = { workspace = true, optional = true }
+usig-tee = { workspace = true, optional = true }
+trait-alias-macro = { workspace = true }
+shared-ids = { workspace = true }
+minbft = { workspace = true, optional = true }
+damysus = { workspace = true, optional = true }
+nxbft = { workspace = true, optional = true }
+nxbft-tee = { workspace = true, optional = true }
+anyhow = "1.0"
+clap = { version = "4.0.27", features = ["derive"] }
+tracing = { version = "0.1.10", features = ["release_max_level_info"] }
+log = { version = "0.4.14", features = ["release_max_level_info"] }
+serde = "1.0"
+abcperf-debug = { workspace = true, optional = true }
+damysus-tee = { workspace = true, optional = true }
+hashbar = "1.0.2"
+
+[build-dependencies]
+vergen-gitcl = "1.0.1"

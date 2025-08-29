@@ -1,0 +1,11 @@
+[package]
+name = "trait-alias-macro"
+version = "0.10.0"
+edition = "2021"
+license = "MIT"
+description = "Trait Bound Alias using Macros"
+repository = "https://github.com/abcperf/trait-alias-macro"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]

@@ -1,0 +1,19 @@
+[package]
+name = "abcperf-nxbft"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+tokio = { version = "1", features = ["full"] }
+nxbft = { workspace = true }
+abcperf = { workspace = true }
+shared-ids = { workspace = true }
+transaction-trait = { workspace = true }
+serde = "1"
+anyhow = "1"
+tracing = "0.1"
+either = "1"
+hashbar = "1.0.2"
+abcperf-abcwrapper = { workspace = true }

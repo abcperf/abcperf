@@ -1,0 +1,13 @@
+[package]
+name = "rust-sgx-sdk-build-helper"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+cc = "1.0"
+sgx_build_helper = { git = "https://github.com/apache/teaclave-sgx-sdk.git" }
+cargo_toml = "0.22.0"
+getrandom = "0.3"
+ctrlc = "3"

@@ -1,0 +1,25 @@
+[package]
+name = "usig"
+version = "0.11.0"
+edition = "2021"
+license = "MIT"
+description = "Unique Sequential Identifier Generator"
+repository = "https://github.com/abcperf/usig"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+shared-ids = { workspace = true }
+hmac = "0.12"
+serde = { version = "1.0", features = ["derive"] }
+signature = "2.0"
+derivative = "2.2"
+generic-array = { version = "0.14", features = ["serde"] }
+thiserror = "1.0"
+trait-alias-macro = { workspace = true }
+ed25519-dalek = { version = "2.0", features = ["serde", "rand_core"] }
+rand = "0.8"
+hashbar = "1.0.2"
+
+[dev-dependencies]
+sha2 = "0.10"

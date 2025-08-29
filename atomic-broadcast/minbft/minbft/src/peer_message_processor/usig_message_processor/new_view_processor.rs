@@ -1,0 +1,445 @@
+use hashbar::Hashbar;
+use itertools::Itertools;
+use serde::{Deserialize, Serialize};
+use std::cmp::Reverse;
+use std::collections::VecDeque;
+use std::fmt::Debug;
+use tracing::{debug, warn};
+use tracing::{error, info, trace};
+use usig::Count;
+use usig::Counter;
+use usig::Usig;
+
+use crate::client_request::ClientRequest;
+use crate::client_request::RequestBatch;
+use crate::output::TimeoutRequest;
+use crate::peer_message::usig_message::checkpoint::Checkpoint;
+use crate::peer_message::usig_message::new_view::NewView;
+use crate::peer_message::usig_message::new_view::NewViewCertificate;
+use crate::peer_message::usig_message::view_peer_message::commit::{Commit, CommitContent};
+use crate::peer_message::usig_message::view_peer_message::prepare::Prepare;
+use crate::peer_message::usig_message::view_peer_message::prepare::PrepareContent;
+use crate::peer_message::usig_message::view_peer_message::ViewPeerMessage;
+use crate::peer_message::usig_message::UsigMessageV;
+use crate::peer_message::ValidatedPeerMessage;
+use crate::peer_message_processor::collector::collector_commits::CollectorCommits;
+use crate::InView;
+use crate::MinBft;
+use crate::MinHeap;
+use crate::{output::NotReflectedOutput, RequestPayload, ViewState};
+use crate::{Error, WrappedRequestPayload};
+
+type NewViewState<P, Sig, Att> = (Option<Checkpoint<Sig, Att>>, VecDeque<Prepare<P, Sig, Att>>);
+
+impl<P: RequestPayload, U: Usig> MinBft<P, U>
+where
+    U::Attestation:
+        Clone + Serialize + for<'a> Deserialize<'a> + PartialEq + Hashbar + 'static + Sync,
+    U::Signature: Clone + Serialize + Debug + Hashbar,
+{
+    /// Process a message of type [NewView].
+    ///
+    /// The steps are as follows:
+    ///
+    /// 1. The [NewViewCertificate] of the received [NewView] has to be valid.
+    ///     1.1. If it is invalid, request a new view-change by broadcasting a
+    ///         [crate::ReqViewChange], and return\
+    ///     1.2. If it is valid, proceed.
+    /// 2. Send a request to stop the current timeout of the view-change.
+    /// 3. Compute the state of the [NewView].
+    /// 4. Accept all new and unique [Prepare]s contained in the
+    ///     [NewViewCertificate].
+    ///     4.1. If there is a hole, a state transfer has to be performed
+    ///          (currently unimplemented).
+    ///     4.2. Else, proceed.
+    /// 5. Clean up the collector of [crate::ReqViewChange]s.
+    /// 6. Stop the timeouts of any pending client requests.
+    /// 7. Start a timeout for the next pending client request.
+    /// 8. Depending on the replica, proceed as follows:
+    ///     8.1. Replica is not the new primary.
+    ///         8.1.1. Transition to new [crate::View] in [crate::ViewState].
+    ///         8.1.2. Relay message [NewView] to all other replicas.
+    ///     8.2. Replica is the primary.
+    ///         8.2.1. Broadcast [Prepare]s for client requests for which there
+    ///               was no Commit in the previous [crate::View].
+    /// 9. Set the counter of the last accepted [Prepare] as the counter of the
+    ///    [NewView] to synchronize replicas.
+    ///
+    /// # Arguments
+    ///
+    /// * `new_view` - The [NewView] to be processed.
+    /// * `output` - The output struct to be adjusted in case of, e.g., errors
+    ///              or responses.
+    pub(crate) fn process_new_view(
+        &mut self,
+        new_view: NewView<P, U::Signature, U::Attestation>,
+        output: &mut NotReflectedOutput<P, U>,
+    ) {
+        // Assure the NewViewCertificate is valid.
+        match new_view.certificate.validate(
+            &self.config,
+            &mut self.usig,
+            new_view.origin,
+            new_view.next_view,
+        ) {
+            Ok(_) => {}
+            Err(_) => {
+                /*let next_view = new_view.next_view + 1;
+
+                let view_change = match ViewChange::sign(
+                    ViewChangeContent::new(
+                        self.config.me(),
+                        new_view.next_view + 1,
+                        self.last_checkpoint_cert.clone(),
+                        self.sent_usig_msgs.iter(),
+                    ),
+                    &mut self.usig,
+                ) {
+                    Ok(view_change) => view_change,
+                    Err(usig_error) => {
+                        let output_error = Error::Usig {
+                            replica: self.config.me(),
+                            msg_type: "ViewChange",
+                            usig_error,
+                        };
+                        output.error(output_error);
+                        return;
+                    }
+                };
+
+                match &self.view_state {
+                    ViewState::InView(_) => {}
+                    ViewState::ChangeInProgress(view_change) => {
+                        output.timeout_request(TimeoutRequest::new_stop_view_change());
+                        info!(
+                            "Broadcast ViewChange (next view: {:?}).",
+                            view_change.next_view
+                        );
+                        self.view_state = ViewState::ChangeInProgress(ChangeInProgress {
+                            prev_view: view_change.prev_view,
+                            next_view,
+                            has_broadcast_view_change: false,
+                        });
+                    }
+                }
+
+                output.broadcast(view_change, &mut self.sent_usig_msgs);
+                return;*/
+            }
+        }
+
+        match &mut self.view_state {
+            ViewState::InView(_) => {
+                warn!("After reaching Processing of NewView, a quorum to do a view change has not been formed. Rejecting it.");
+                //unimplemented!("State transfer needs to be performed");
+                /*output.error(Error::StateTransferRequired {
+                    replica: self.config.id,
+                });*/
+            }
+            ViewState::ChangeInProgress(in_progress) => {
+                if new_view.next_view > in_progress.next_view {
+                    debug!("Received a NewView message to change to another View from the one expected (received: {}, expected: {})", new_view.next_view, in_progress.next_view);
+                    return;
+                }
+
+                let (last_cp, mut unique_preps) = Self::compute_new_view_state(
+                    self.counter_last_accepted_prep,
+                    &new_view.certificate,
+                );
+
+                let latest_cert = new_view
+                    .certificate
+                    .view_changes
+                    .iter()
+                    .filter_map(|view_change| view_change.checkpoint_cert.as_ref())
+                    .sorted_by_key(|checkpoint_cert| {
+                        (
+                            checkpoint_cert.my_checkpoint.view_latest_prep,
+                            checkpoint_cert.my_checkpoint.counter_latest_prep,
+                        )
+                    })
+                    .last();
+                match (latest_cert, self.last_checkpoint_cert.as_ref()) {
+                    (None, None) => {}
+                    (None, Some(_)) => {
+                        warn!("NewView contains no Checkpoint, but replica already has a stable one. Rejecting it.");
+                        return;
+                    }
+                    (Some(c1), Some(c2)) => {
+                        let (c1, c2) = (&c1.my_checkpoint, &c2.my_checkpoint);
+                        if !c1.same_checkpoint(c2) {
+                            if c1.view_latest_prep <= c2.view_latest_prep
+                                || (c1.view_latest_prep == c2.view_latest_prep
+                                    && c1.counter_latest_prep <= c2.counter_latest_prep)
+                            {
+                                warn!("NewView is for an older checkpoint, than the own latest stable one. Rejecting it.");
+                                return;
+                            } else {
+                                warn!("NewView has a newer checkpoint, than the own latest stable one. State trasfer required.");
+                                assert!(last_cp.is_some());
+                                //unimplemented!("State transfer needs to be performed");
+                                output.error(Error::StateTransferRequired {
+                                    replica: self.config.id,
+                                });
+                                return;
+                            }
+                        }
+                    }
+                    (Some(_), None) => {
+                        warn!("NewView contains a newer checkpoint, but replica has not formed an own stable checkpoint. State trasfer required.");
+                        assert!(last_cp.is_some());
+                        //unimplemented!("State transfer needs to be performed");
+                        output.error(Error::StateTransferRequired {
+                            replica: self.config.id,
+                        });
+                        return;
+                    }
+                }
+
+                // The NewViewCertificate is valid.
+
+                // Stops the current timeout of type ViewChange.
+                output.timeout_request(TimeoutRequest::new_stop_view_change());
+
+                trace!("Accepting unique Prepares contained in NewViewCertificate ...");
+
+                while !unique_preps.is_empty() {
+                    let unique_prep = unique_preps.pop_front().unwrap();
+                    let from = unique_prep.origin;
+                    let counter = unique_prep.counter();
+
+                    let (_, recovery_requests, new_batch, new_timout) =
+                        self.request_processor.accept_prepare(
+                            &self.config,
+                            &unique_prep,
+                            &mut self.recovering_replicas,
+                            &mut self.replica_storage,
+                            self.current_timeout_duration,
+                            output,
+                            false,
+                        );
+
+                    self.process_batching_output(new_batch, new_timout, output);
+
+                    if !recovery_requests.is_empty() && unique_prep.origin != self.config.me() {
+                        let origin = self.config.me();
+                        trace!(
+                            "NewView: Creating Commit for Prepare (origin: {:?}, view: {:?}, counter: {:?}) ...",
+                            unique_prep.origin,
+                            unique_prep.view,
+                            unique_prep.counter()
+                        );
+                        match Commit::sign(
+                            CommitContent {
+                                origin,
+                                prepare: unique_prep.clone(),
+                            },
+                            &mut self.usig,
+                        ) {
+                            Ok(commit) => {
+                                trace!("NewView: Successfully created Commit for Prepare (origin: {:?}, view: {:?}, counter: {:?}) ...", unique_prep.origin, unique_prep.view, unique_prep.counter());
+                                debug!(
+                                    "NewView: Broadcast Commit for Prepare (origin: {:?}, view: {:?}, counter: {:?}) ...",
+                                    commit.prepare.origin,
+                                    commit.prepare.view,
+                                    commit.prepare.counter()
+                                );
+                                output.broadcast(commit.clone(), &mut self.sent_usig_msgs);
+                            }
+                            Err(usig_error) => {
+                                error!("NewView: Failed to process Prepare (origin: {:?}, view: {:?}, counter: {:?}): Failed to create and sign Commit in response to Prepare. For further information see output.", unique_prep.origin, unique_prep.view, unique_prep.counter());
+                                let output_error = Error::Usig {
+                                    replica: origin,
+                                    msg_type: "Prepare",
+                                    usig_error,
+                                };
+                                output.error(output_error);
+                            }
+                        };
+
+                        for request in unique_prep.request_batch.batch.iter() {
+                            if let WrappedRequestPayload::Internal(recovery_request) =
+                                &request.payload
+                            {
+                                if recovery_request.replica_id == self.config.id {
+                                    continue;
+                                }
+
+                                debug!(
+                                    "==========================================================="
+                                );
+                                debug!("AAAAbbbA Forwarding");
+                                debug! {"{:?}", unique_prep}
+
+                                let forward_msg = ValidatedPeerMessage::Forward(
+                                    recovery_request.nonce,
+                                    UsigMessageV::View(ViewPeerMessage::Prepare(
+                                        unique_prep.clone(),
+                                    )),
+                                    self.replicas_state[origin.as_u64() as usize]
+                                        .usig_message_order_enforcer
+                                        .get_pending_new_views(unique_prep.view),
+                                );
+                                output.send(forward_msg, recovery_request.replica_id);
+                                debug!("to {:?}", recovery_request.replica_id);
+                                debug!(
+                                    "==========================================================="
+                                );
+                            }
+                        }
+                    }
+
+                    for (client_id, recovery_request) in recovery_requests {
+                        self.handle_recovery_request(client_id, recovery_request);
+                    }
+
+                    // Update the last seen counter in the replica state of the
+                    // origin of the prepare.
+                    let replica_state = &mut self.replicas_state[from.as_u64() as usize];
+                    replica_state
+                        .usig_message_order_enforcer
+                        .update_in_new_view(counter);
+                }
+                trace!("Accepted unique Prepares contained in NewViewCertificate.");
+
+                // Clean up the collection of ReqViewChanges.
+                self.collector_rvc
+                    .clean_up(new_view.next_view, new_view.next_view);
+
+                self.view_state = ViewState::InView(InView {
+                    view: new_view.next_view,
+                    has_requested_view_change: false,
+                    collector_commits: CollectorCommits::new(),
+                });
+
+                // Set the counter of the last accepted Prepare temporarily
+                // as the counter of the last sent UsigMessage by the new View.
+                // This makes sure all replicas are synced correctly upon changing views.
+                self.counter_last_accepted_prep = Some(new_view.counter());
+
+                if !self.config.me_primary(new_view.next_view) {
+                    // Relay the NewView message.
+                    trace!(
+                        "Relayed NewView (origin: {:?}, next view: {:?}).",
+                        new_view.origin,
+                        new_view.next_view
+                    );
+                    //TODO output.broadcast(new_view.clone(), &mut Vec::new());
+                } else {
+                    let mut requests_to_batch: Vec<ClientRequest<P, U::Attestation>> = Vec::new();
+
+                    // After the new View sends and receives the message of type NewView,
+                    // it sends Prepares for the client requests that had not yet been accepted by the previous View.
+                    for (_, req) in self.request_processor.currently_processing_all() {
+                        requests_to_batch.push(req.clone());
+                    }
+
+                    // Send Prepares in a batch.
+                    trace!("Creating Prepare for client requests that have yet to be accepted ...");
+                    let origin = self.config.me();
+                    if !requests_to_batch.is_empty() {
+                        match Prepare::sign(
+                            PrepareContent {
+                                view: new_view.next_view,
+                                origin,
+                                request_batch: RequestBatch {
+                                    batch: requests_to_batch.into_boxed_slice(),
+                                },
+                            },
+                            &mut self.usig,
+                        ) {
+                            Ok(prepare) => {
+                                trace!("Successfully created Prepare for client requests that have yet to be accepted.");
+                                trace!("Broadcast Prepare for client requests that have yet to be accepted.");
+                                output.broadcast(prepare, &mut self.sent_usig_msgs);
+                            }
+                            Err(usig_error) => {
+                                error!("Failed to create Prepare for client requests that have yet to be accepted. For further information see output.");
+                                let output_error = Error::Usig {
+                                    replica: origin,
+                                    msg_type: "Prepare",
+                                    usig_error,
+                                };
+                                output.error(output_error);
+                                return;
+                            }
+                        };
+                    }
+                }
+                for replica_state in &mut self.replicas_state {
+                    replica_state
+                        .usig_message_order_enforcer
+                        .update_after_finished_new_view(new_view.next_view);
+                }
+                info!(
+                    "Successfully transitioned to new view ({:?}).",
+                    new_view.next_view
+                );
+            }
+        }
+    }
+
+    /// Computes the new [NewView] state.
+    /// That is to say, it returns the latest [Checkpoint] and the unique
+    /// [Prepare]s contained in the [NewViewCertificate].
+    /// Only the [Prepare]s with a counter higher than the given counter are
+    /// gathered.
+    ///
+    /// # Arguments
+    ///
+    /// * `counter_last_accepted_prep` - The counter of the latest accepted
+    ///     [Prepare] to use for the computation.
+    /// * `new_view_cert` - The [NewViewCertificate] to use for the computation.
+    ///
+    /// # Return Value
+    ///
+    /// The computed [NewView] state.
+    fn compute_new_view_state(
+        counter_last_accepted_prep: Option<Count>,
+        new_view_cert: &NewViewCertificate<P, U::Signature, U::Attestation>,
+    ) -> NewViewState<P, U::Signature, U::Attestation> {
+        let mut preps: MinHeap<Prepare<P, U::Signature, U::Attestation>> = MinHeap::default();
+        let mut last_cp: Option<Checkpoint<U::Signature, U::Attestation>> = None;
+
+        for view_change in &new_view_cert.view_changes {
+            for m in &view_change.variant.message_log {
+                match m {
+                    UsigMessageV::View(view) => match view {
+                        ViewPeerMessage::Prepare(prepare) => {
+                            if Some(prepare.counter()) > counter_last_accepted_prep {
+                                preps.push(Reverse(prepare.clone()));
+                            };
+                        }
+                        ViewPeerMessage::Commit(commit) => {
+                            if Some(commit.prepare.counter()) > counter_last_accepted_prep {
+                                preps.push(Reverse(commit.prepare.clone()))
+                            }
+                        }
+                    },
+                    UsigMessageV::ViewChange(_) => {}
+                    UsigMessageV::NewView(_) => {}
+                    UsigMessageV::Checkpoint(checkpoint) => match &last_cp {
+                        Some(latest) => {
+                            if latest.counter_latest_prep < checkpoint.counter_latest_prep {
+                                last_cp = Some(checkpoint.clone());
+                            }
+                        }
+                        None => {
+                            last_cp = Some(checkpoint.clone());
+                        }
+                    },
+                }
+            }
+        }
+
+        let mut unique_preps: VecDeque<Prepare<P, U::Signature, U::Attestation>> = VecDeque::new();
+        while let Some(min_prep) = preps.pop() {
+            if unique_preps.back().is_none()
+                || unique_preps.back().unwrap().counter() != min_prep.0.counter()
+            {
+                unique_preps.push_back(min_prep.0);
+            }
+        }
+        (last_cp, unique_preps)
+    }
+}

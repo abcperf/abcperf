@@ -1,0 +1,32 @@
+[package]
+name = "abcperf-maas"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+shared-ids = { workspace = true }
+abcperf = { workspace = true }
+maas-tee = { workspace = true }
+maas-types = { workspace = true }
+tokio = { version = "1.15.0", features = ["full"] }
+futures = "0.3.19"
+anyhow = "1.0"
+serde = { version = "1.0", features = ["rc"] }
+bincode = "1.3"
+sgx_crypto = { git = "https://github.com/apache/teaclave-sgx-sdk.git", default-features = false, features = [
+    "ucrypto",
+] }
+async-trait = "0.1.52"
+async-channel = "2.0.0"
+bytes = { version = "1", features = ["serde"] }
+rand = "0.8"
+sgx_types = { git = "https://github.com/apache/teaclave-sgx-sdk.git" }
+rand_chacha = "0.3.1"
+rand_pcg = "0.3.1"
+tokio-stream = "0.1.8"
+rand_distr = "0.4.3"
+sgx-utils = { workspace = true }
+tracing = "0.1.10"
+hashbar = "1.0.2"

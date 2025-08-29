@@ -1,0 +1,33 @@
+enclave {
+    from "sgx_backtrace.edl" import *;
+    from "sgx_tstd.edl" import *;
+    from "sgx_net.edl" import *;
+    from "sgx_thread.edl" import *;
+    from "sgx_cpuid.edl" import *;
+
+    include "sgx_tcrypto.h"
+
+    trusted {
+        public uint8_t init(uint64_t me, uint64_t n, uint64_t quorum);
+        public uint8_t get_public_key([out] sgx_ec256_public_t* pub_key);
+        public uint8_t add_peer(uint64_t id, [in] sgx_ec256_public_t* pub_key);
+        public uint8_t accumulate(
+            [in, size = commitments_len] uint8_t* commitments, size_t commitments_len,
+            [out, size = signed_commitment_max_len] uint8_t* signed_commitment, size_t signed_commitment_max_len, [out] size_t* signed_commitment_len
+        );
+        public uint8_t prepare(
+            uint64_t block_view,
+            [in, size = block_hash_len] uint8_t* block_hash, size_t block_hash_len,
+            [in, size = block_justification_len] uint8_t* block_justification, size_t block_justification_len,
+            [in, size = block_parent_len] uint8_t* block_parent, size_t block_parent_len,
+            [in, size = justification_block_hash_len] uint8_t* justification_block_hash, size_t justification_block_hash_len,
+            [out, size = signed_commitment_max_len] uint8_t* signed_commitment, size_t signed_commitment_max_len, [out] size_t* signed_commitment_len
+        );
+        public uint8_t re_sign_last_prepared(
+            [out, size = signed_commitment_max_len] uint8_t* signed_commitment, size_t signed_commitment_max_len, [out] size_t* signed_commitment_len
+        );
+    };
+
+    untrusted {
+    };
+};

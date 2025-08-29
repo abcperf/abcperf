@@ -1,0 +1,84 @@
+# command line
+# abcperf-bin orchestrator  [--clickhouse ENDPOINT] [--log-level LEVEL] [--web-server [BIND_IP:PORT]] IP[:PORT] path/to/config.yml
+# abcperf-bin replica ORCHESTRATOR_IP[:PORT]
+
+experiment_duration: 10 # optional
+n: 3
+t: 1
+client_workers: 1
+
+experiment_label: test
+run_tags:
+  testtag: foo
+  bar: baz
+
+abc:
+  algorithm: minbft-tee
+  config:
+    # minbft
+    batching: !trivial
+        batch_timeout: 0.1 # seconds
+        max_batch_size: 10000 # requests
+    checkpoint_period: 1000 # batches
+    backoff_multiplier: 2 # scalar
+    initial_timeout_duration: 1000 # seconds
+    # nxbft
+    vertex_timeout: 0.1 # seconds
+    min_vertex_size: 100 # requests
+    # damysus
+    initial_view_timeout: 3 # seconds
+    block_timeout: 0.1 # seconds
+    minimum_block_size: 100 # requests
+
+
+fault_emulation:
+  - replica_id: 0
+    omission_chance: 1
+    invocation_time: 5
+  # assert replica_id < n 
+  # assert len(distinct replica_id) <= t
+  # len = 0 => no fault emulation at all, invocation time of first entry > 0 => no emulation up to that point
+
+
+application:
+  name: noop
+  config:
+    maximum_client_count: 10000
+    request_payload: 0
+    response_payload: 0
+    payload_size: 0
+    fallback_timeout: 1
+    distribution: constant
+
+
+orchestrator_request_generation:
+  smr_client: fallback
+  fallback_timeout: 1
+  load:
+    - ticks_per_second: 1000
+      requests_per_tick: 1
+      invocation_time: 0
+
+  #- ticks_per_second: # assert <= 1000
+  #  requests_per_tick: 
+  #  invocation_time: 
+  ## assert len(load) >= 1 and invocation_time of first entry is 0
+  maximum_client_instances: 10
+  distribution: constant
+    #uniform:
+    #exponential:
+    #normal:
+    #  std_dev:
+
+network:  
+  replica_to_replica: []
+  #  - latency:
+  #    jitter:
+  #    packet_loss:
+  #    invocation_time:
+  client_to_replica: []
+  #  - latency:
+  #    jitter:
+  #    packet_loss:
+  #    invocation_time:
+# len = 0 => no network emulation at all, invocation time of first entry > 0 => no emulation up to that point

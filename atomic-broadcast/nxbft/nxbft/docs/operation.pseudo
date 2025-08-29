@@ -1,0 +1,189 @@
+procedure process_client_request(client_id, sq, t) {
+    self.pendings_transactions.insert((client_id, sq, t)); 
+    if  self.ready 
+        or not self.in_recovery 
+        or self.call_create_vertex {
+        self.create_vertex()
+    }
+}
+
+procedure process_vertex(p_k, p_j, v, c, signature) {
+    if  not self.ready 
+        or self.current_recoveries.contains(p_j)
+        or c < self.expected_counters[p_j]
+        or self.ne_message_buffers.knows(c)
+        or not self.enclave.verify(p_j, v, c, signature) {
+        return 
+    }
+
+    v.c = c
+    v.signature = signature
+    self.ne_message_buffers[p_j].insert(c, v)
+
+    while not self.ne_message_buffers[p_j].is_empty() {
+        (c,v) = self.ne_message_buffers[p_j].peek()
+        if c not self.expected_counters[p_j] {
+            if not self.pending_vertices.contains((v.round - 1, p_j)) {
+                broadcast(VERTEX_REQUEST, (v.round - 1, p_j))
+                self.pending_vertices.insert((v.round - 1, p_j))
+            }
+            break
+        }
+        if self.in_recovery {
+            return
+        }
+        (c, v) = self.ne_message_buffers[p_j].pop()
+        self.expected_counters[p_j] += 1
+        self.handle_vertex(v)
+    }
+}
+
+procedure process_vertex_request(p_k, (r, p_j)) {
+    if self.dag[r][p_j] not None {
+        unicast(p_k, VERTEX, p_j, self.dag[r][p_j], self.dag[r][p_j].c, self.dag[r][p_j].signature)
+    }
+    else {
+        self.vertex_requests.insert((r, p_j), p_k)
+    }
+}
+
+procedure process_vertex_timeout() {
+    if self.ready and not self.in_recovery and self.call_create_vertex {
+        self.pendings_transactions.insert((None, None, None))
+        self.create_vertex()
+    }
+}
+
+procedure handle_vertex(v) {
+    v.delivered = false
+    if  self.buffer.knows((v.round, v.creator))
+        or self.dag[v.round][v.creator] not None
+        or (v.round == 1 and v.edges.len() > 0)
+        or (v.round > 1 and v.edges.len() < self.quorum) {
+        return
+    }
+    if self.max_rounds[v.creator] < v.round {
+        self.max_rounds[v.creator] = v.round
+    }
+    self.pending_vertices.remove((v.round, v.creator))
+    self.buffer.insert(v)
+    self.buffer_walk()
+}
+
+procedure buffer_walk() {
+    foreach v in buffer { // ordered by v.round
+        if v.round > self.r {
+            break
+        }
+        add = true
+        foreach p_e in v.edges {
+            if self.dag[v.round - 1][p_e] not None {
+                continue
+            }
+
+            add = false
+            if self.pending_vertices.contains((v.round - 1, p_e)) {
+                continue
+            }
+
+            broadcast(VERTEX_REQUEST, (v.round - 1, p_e))
+            self.pending_vertices.insert((v.round - 1, p_e))
+        }
+        if add {
+            self.dag[v.round][v.creator] = v
+            self.buffer.remove(v)
+            foreach p_j in self.vertex_requests[(v.round, v.creator)] {
+                unicast(p_j, VERTEX, v.creator, v. v.c, v.signature)
+            }
+            self.vertex_requests.remove((v.round, v.creator))
+        }
+    }
+    if self.dag[self.r][self.id] not None and self.dag[self.r].len() >= self.quorum {
+        if self.r mod 4 == 0 {
+            self.wave_ready()
+        }
+        self.r += 1
+        self.create_vertex()
+    }
+}
+
+procedure create_vertex() {
+    if self.pendings_transactions.is_empty() or self.r < self.restart_round {
+        self.schedule_vertex_timeout()
+        self.call_create_vertex = true
+        return
+    }
+    self.call_create_vertex = false
+    self.cancel_vertex_timeout()
+    v = Vertex(self.id, self.r, self.pendings_transactions.drain())
+
+    if self.r > 1 {
+        v.edges = self.dag[self.r - 1].keys()
+    }
+    (signature, c) = self.enclave.sign(v)
+    broadcast(VERTEX, self.id, v, c, signature)
+}
+
+procedure wave_ready() {
+    w = self.r / 4
+    p_w = self.enclave.toss(self.dag[self.r])
+    self.pending_wave_coins.insert(w, p_w)
+    
+    v_w = self.dag[round(w, 1)][p_w]
+    if not self.dag.knows(v_w) {
+        return
+    }
+    reaching_leader = 0
+
+    for u in self.dag[round(w,4)] {
+        if self.dag.has_path(u, v_w) {
+            reaching_leader += 1
+        }
+    }
+
+    leaders_stack = Stack()
+    leaders_stack.push(v_w)
+
+    foreach w_prime in self.decided_wave + 1..w.iter().reverse() {
+        p_w_prime = self.pending_wave_coins.get(w_prime)
+        v_w_prime = (round(w_prime, 1), p_w_prime)
+
+        if self.dag.knows(v_w_prime) and self.dag.has_path(v_w, v_w_prime) {
+            v_w = v_w_prime
+            leaders_stack.push(v_w)
+        }
+    }
+
+    while not leaders_stack.is_empty() {
+        self.deliver_from(leaders_stack.pop())
+    }
+    self.deicded_wave = w
+    self.pending_wave_coins.clear()
+}
+
+procedure deliver_from((r_v, p_v)) {
+    if self.dag[r_v][p_v].delivered {
+        return
+    }
+    
+    stack = Stack()
+    stack.push((r_v, p_v))
+
+    while (r_v, p_v) = stack.pop() {
+        for p_e in self.dag[r_v][p_v].edges {
+            if not stack.contains((r_v - 1, p_e)) and not self.dag[r_v - 1][p_e].delivered {
+                stack.push((r_v - 1, p_e))
+            }
+        }
+        foreach (client_id, sq, t) in self.dag[r_v][p_v].transactions {
+            last = self.client_last_request[client_id]
+            
+            if last not None and last >= sq {
+                continue
+            }
+            self.client_last_request[client_id] = sq
+            unicast(client_id, RESPONSE, sq, self.state_machine.execute(t))
+        }
+        self.dag[r_v][p_v].delivered = true
+    }
+}

@@ -1,0 +1,46 @@
+[package]
+name = "nxbft-tee"
+version = "1.0.0"
+edition = "2021"
+build = "build.rs"
+links = "nxbft_tee_u"
+
+[dependencies]
+thiserror = "1"
+shared-ids = { workspace = true }
+sgx_types = { git = "https://github.com/apache/teaclave-sgx-sdk.git" }
+sgx_urts = { git = "https://github.com/apache/teaclave-sgx-sdk.git" }
+sgx_crypto = { git = "https://github.com/apache/teaclave-sgx-sdk.git", default-features = false, features = [
+    "ucrypto",
+] }
+nxbft = { workspace = true }
+nxbft-base = { workspace = true }
+nxbft-tee-shared = { workspace = true }
+serde = { version = "1.0", features = ["derive"] }
+serde_bytes = "0.11.5"
+remote-attestation = { workspace = true }
+remote-attestation-shared = { workspace = true }
+sgx-utils = { workspace = true }
+tracing = "0.1.10"
+bincode = "1.3"
+rangemap = { version = "1.5.1", features = ["serde1"] }
+hashbar = "1.0.2"
+
+[dev-dependencies]
+id-set = { workspace = true }
+rstest = "0.26.0"
+transaction-trait = { workspace = true }
+rayon = "1"
+criterion = { version = "0.5", features = ["html_reports"] }
+
+[build-dependencies]
+rust-sgx-sdk-build-helper = { workspace = true }
+getrandom = "0.3"
+
+[[bench]]
+name = "toss"
+harness = false
+
+[[bench]]
+name = "sign"
+harness = false
