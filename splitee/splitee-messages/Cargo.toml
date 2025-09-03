@@ -1,0 +1,8 @@
+[package]
+name = "splitee-messages"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+shared-ids = { workspace = true }
+splitee-crypto = { workspace = true}

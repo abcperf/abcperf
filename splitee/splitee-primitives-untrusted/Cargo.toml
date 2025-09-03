@@ -1,0 +1,9 @@
+[package]
+name = "splitee-primitives-untrusted"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+splitee-crypto = { workspace = true }
+splitee-messages = { workspace = true}
+splitee-dkg ={ workspace = true }
